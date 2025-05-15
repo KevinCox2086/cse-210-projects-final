@@ -3,17 +3,13 @@ using System.Collections.Generic;
 
 public class PromptGenerator
 {
-    // --- Member Variables ---
     private List<string> _prompts;
     private Random _random;
 
-    // --- Constructor ---
     public PromptGenerator()
     {
-        _random = new Random(); // Initialize the random number generator
-
-        // Initialize the list of prompts
-        _prompts = new List<string>
+        _random = new Random();
+        _prompts = new List<string> // List of journal prompts
         {
             "Who was the most interesting person I interacted with today?",
             "What was the best part of my day?",
@@ -23,24 +19,17 @@ public class PromptGenerator
             "What is something new I learned today?",
             "What am I grateful for right now?",
             "Describe a moment of peace or quiet you experienced today."
-            // Add more prompts as desired (at least 5 required)
         };
     }
 
-    // --- Methods ---
-
-    /// <summary>
-    /// Gets a random prompt from the predefined list.
-    /// </summary>
-    /// <returns>A randomly selected prompt string.</returns>
+    // Gets a random prompt from the list
     public string GetRandomPrompt()
     {
         if (_prompts == null || _prompts.Count == 0)
         {
-            return "No prompts available."; // Fallback
+            return "No prompts available.";
         }
-
-        int index = _random.Next(_prompts.Count); // Get a random index within the list bounds
+        int index = _random.Next(_prompts.Count);
         return _prompts[index];
     }
 }
