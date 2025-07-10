@@ -1,9 +1,11 @@
-using System;
-
-class Program
+namespace AdventureGame
 {
-    static void Main(string[] args)
+    public class Program
     {
-        Console.WriteLine("Hello FinalProject World!");
+        public static void Main(string[] args)
+        {
+            GameEngine game = new GameEngine();
+            game.Run();
+        }
     }
 }
