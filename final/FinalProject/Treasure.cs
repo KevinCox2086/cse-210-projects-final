@@ -2,14 +2,14 @@ namespace AdventureGame.Items
 {
     public class Treasure : Item
     {
-        public Treasure(string name, string description, string discoveryMessage) 
-            : base(name, description, discoveryMessage)
+        public Treasure(string name, string description, string detailedDescription, string discoveryMessage) 
+            : base(name, description, detailedDescription, discoveryMessage)
         {
         }
 
-        public override void Use(Character.Player player)
+        public override string Use(Character.Player player)
         {
-            System.Console.WriteLine($"You gaze at the {Name}. It seems to hum with ancient power.");
+            return $"You gaze at the {Name}. It seems to hum with ancient power.";
         }
     }
 }

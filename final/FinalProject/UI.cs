@@ -8,7 +8,13 @@ namespace AdventureGame
         {
             if (currentHealth < 0) currentHealth = 0;
 
-            Console.Write($"{name,-12} [");
+            string displayName = name;
+            if (displayName.Length > 10)
+            {
+                displayName = displayName.Substring(0, 9) + "...";
+            }
+
+            Console.Write($"{displayName,-12} [");
 
             decimal healthPercentage = (decimal)currentHealth / maxHealth;
 

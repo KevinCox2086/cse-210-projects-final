@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AdventureGame.Character;
 
 namespace AdventureGame.Items
@@ -6,16 +7,18 @@ namespace AdventureGame.Items
     {
         public int HealAmount { get; private set; }
 
-        public Potion(string name, string description, string discoveryMessage, int healAmount) 
-            : base(name, description, discoveryMessage)
+        public Potion(string name, string description, string detailedDescription, string discoveryMessage, int healAmount, List<string> keywords) 
+            : base(name, description, detailedDescription, discoveryMessage)
         {
             HealAmount = healAmount;
+            Keywords.AddRange(keywords);
         }
 
-        public override void Use(Player player)
+        public override string Use(Player player)
         {
-            player.Heal(HealAmount);
+            int healthRestored = player.Heal(HealAmount);
             player.RemoveFromInventory(this);
+            return $"You drink the {Name} and restore {healthRestored} health. Your health is now {player.Health}/{player.MaxHealth}.";
         }
     }
 }

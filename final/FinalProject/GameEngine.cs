@@ -11,21 +11,25 @@ namespace AdventureGame
 {
     public class GameEngine
     {
-        private readonly Player _player;
+        private Player _player;
         private Location _currentLocation;
         private bool _isRunning = true;
         private readonly World _world;
         private string _lastActionMessage = "";
+        private readonly Random _random = new Random();
+        private bool _hasDrankFromFountain = false;
 
         public GameEngine()
         {
             _world = new World();
-            _player = new Player("Hero", 100);
-            _currentLocation = _world.StartingLocation;
         }
 
         public void Run()
         {
+            string playerName = ShowIntroScreen();
+            _player = new Player(playerName, 100);
+            _currentLocation = _world.StartingLocation;
+            
             PerformTimedLoot();
 
             while (_isRunning)
@@ -41,6 +45,41 @@ namespace AdventureGame
                 string[] commandParts = Parser.Parse(command);
                 ProcessCommand(commandParts);
             }
+        }
+
+        private string ShowIntroScreen()
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(@"
+    ================================================================
+    |                                                              |
+    |                  Welcome to the C# Adventure!                |
+    |                                                              |
+    ================================================================
+            ");
+            Console.ResetColor();
+            Console.WriteLine("\n\nA foul corruption has spread from the nearby caves, and the town needs a hero.");
+            Console.WriteLine("Whispers in the tavern speak of goblins, a fearsome dragon, and a lost artifact of great power.");
+            Console.WriteLine("\nYour goal is to venture into the caves, defeat the dragon, and recover the legendary Ancient Amulet.");
+            Console.WriteLine("\n--- How to Play ---");
+            Console.WriteLine("Type commands composed of a verb and sometimes a noun (e.g., 'go north', 'use potion').");
+            Console.WriteLine("Items in new areas will be picked up automatically after a brief pause.");
+            Console.WriteLine("Check your status and items at any time by typing 'inventory' or 'i'.");
+            Console.WriteLine("The game will suggest possible actions at the bottom of the screen.");
+            
+            Console.WriteLine("\nWhat is your name, adventurer?");
+            Console.Write("> ");
+            string playerName = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(playerName))
+            {
+                playerName = "Hero";
+            }
+
+            Console.WriteLine($"\nGood luck, {playerName}!");
+            Console.WriteLine("\nPress any key to begin your quest...");
+            Console.ReadKey();
+            return playerName;
         }
 
         private void RedrawGameScreen()
@@ -61,10 +100,10 @@ namespace AdventureGame
                 Console.WriteLine(_currentLocation.Description);
             }
 
-            if (_currentLocation.Items.Any())
+            if (_currentLocation.Items.Any(i => !i.IsSecret) && !string.IsNullOrEmpty(_currentLocation.ItemHint))
             {
                 Console.ForegroundColor = ConsoleColor.Gray;
-                Console.WriteLine("\n(You notice something on the ground.)");
+                Console.WriteLine($"\n{_currentLocation.ItemHint}");
                 Console.ResetColor();
             }
 
@@ -92,15 +131,20 @@ namespace AdventureGame
         {
             string verb = commandParts[0];
             string noun = commandParts.Length > 1 ? string.Join(" ", commandParts.Skip(1)) : "";
+            string fullCommand = string.Join(" ", commandParts);
+
+            if (fullCommand == "drink from fountain" || fullCommand == "drink fountain") { DrinkFromFountain(); return; }
+            if (fullCommand.StartsWith("look at")) { LookAt(string.Join(" ", commandParts.Skip(2))); return; }
+
             string verbAndPreposition = commandParts.Length > 1 && commandParts[0] == "talk" && commandParts[1] == "to" ? "talk to" : verb;
             if (verbAndPreposition == "talk to") { Talk(string.Join(" ", commandParts.Skip(2))); return; }
             switch (verb)
             {
-                case "quit": _isRunning = false; Console.WriteLine("Thanks for playing!"); break;
-                case "look": _lastActionMessage = ""; break;
-                case "go": Move(noun); break;
+                case "quit": case "exit": _isRunning = false; Console.WriteLine("Thanks for playing!"); break;
+                case "look": case "examine": _lastActionMessage = ""; break;
+                case "go": case "move": Move(noun); break;
                 case "use": Use(noun); break;
-                case "attack": Attack(noun); break;
+                case "attack": case "fight": Attack(noun); break;
                 case "inventory": case "i": ShowInventory(); break;
                 case "map": _lastActionMessage = "The map is always visible at the top of the screen."; break;
                 case "help": ShowHelp(); break;
@@ -112,25 +156,63 @@ namespace AdventureGame
         {
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine($"\n--- COMBAT START: You are fighting the {enemy.Name}! ---");
+            Console.WriteLine($"\n--- COMBAT START ---");
             Console.ResetColor();
+            
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.WriteLine($"The {enemy.Name} notices you and shouts, \"{enemy.GetDescription()}\"");
+            Console.ResetColor();
+            
+            Thread.Sleep(2000);
+
             UI.DrawHealthBar(_player.Name, _player.Health, _player.MaxHealth);
             UI.DrawHealthBar(enemy.Name, enemy.Health, enemy.MaxHealth);
             Thread.Sleep(4000);
+            
+            var playerAttackVerbs = new List<string> { "You attack", "You swing at", "You lunge towards", "You strike" };
+            var enemyAttackVerbs = new List<string> { $"The {enemy.Name} attacks", $"The {enemy.Name} lunges at", $"The {enemy.Name} swings at" };
+            var missVerbs = new List<string> { "and miss", "but your attack goes wide", "but it dodges out of the way" };
+
             while (_player.IsAlive && enemy.IsAlive)
             {
-                int playerDamage = _player.CalculateDamage(out bool playerCrit);
-                if (playerCrit) DisplayCriticalHit();
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.WriteLine($"\nYou attack the {enemy.Name} for {playerDamage} damage.");
-                enemy.TakeDamage(playerDamage);
+                if (_random.Next(1, 101) <= 15)
+                {
+                    Console.WriteLine($"\nYou swing wildly {missVerbs[_random.Next(missVerbs.Count)]}!");
+                    Sound.PlayMiss();
+                }
+                else
+                {
+                    int playerDamage = _player.CalculateDamage(out bool playerCrit);
+                    string attackVerb = playerAttackVerbs[_random.Next(playerAttackVerbs.Count)];
+                    
+                    Console.ForegroundColor = ConsoleColor.White;
+                    if (playerCrit)
+                    {
+                        DisplayCriticalHit();
+                        Console.WriteLine($"A devastating blow! {attackVerb} the {enemy.Name} for {playerDamage} damage!");
+                    }
+                    else
+                    {
+                        double enemyHealthPercent = (double)enemy.Health / enemy.MaxHealth;
+                        if (enemyHealthPercent > 0.7) { Console.WriteLine($"\n{attackVerb} the {enemy.Name}, but your blow barely scratches its tough hide, dealing {playerDamage} damage."); }
+                        else if (enemyHealthPercent > 0.3) { Console.WriteLine($"\n{attackVerb} the {enemy.Name}, landing a solid blow for {playerDamage} damage."); }
+                        else { Console.WriteLine($"\nThe {enemy.Name} stumbles, wounded. {attackVerb}, striking a weak spot for {playerDamage} damage!"); }
+                        Sound.PlayPlayerAttack();
+                    }
+                    
+                    enemy.TakeDamage(playerDamage);
+                }
+                
                 Thread.Sleep(1000);
                 UI.DrawHealthBar(enemy.Name, enemy.Health, enemy.MaxHealth);
                 Thread.Sleep(3000);
+
                 if (!enemy.IsAlive)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine($"\nYou have defeated the {enemy.Name}!");
+                    if (!string.IsNullOrEmpty(enemy.DefeatMessage)) { Console.ForegroundColor = ConsoleColor.Gray; Console.WriteLine(enemy.DefeatMessage); Console.ResetColor(); }
+                    if (enemy.Loot.Any()) { _currentLocation.Items.AddRange(enemy.Loot); }
                     _currentLocation.Characters.Remove(enemy);
                     Console.ResetColor();
                     Console.WriteLine("\nPress any key to continue...");
@@ -138,22 +220,47 @@ namespace AdventureGame
                     PerformTimedLoot();
                     break;
                 }
-                int enemyDamage = enemy.CalculateDamage(out bool enemyCrit);
-                if (enemyCrit) DisplayCriticalHit();
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\nThe {enemy.Name} attacks you for {enemyDamage} damage.");
-                _player.TakeDamage(enemyDamage);
+
+                if (_random.Next(1, 101) <= 15)
+                {
+                    Console.WriteLine($"\nThe {enemy.Name} lunges and misses you!");
+                    Sound.PlayMiss();
+                }
+                else
+                {
+                    int enemyDamage = enemy.CalculateDamage(out bool enemyCrit);
+                    string attackVerb = enemyAttackVerbs[_random.Next(enemyAttackVerbs.Count)];
+
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    if (enemyCrit)
+                    {
+                        DisplayCriticalHit();
+                        Console.WriteLine($"A devastating blow! {attackVerb} you for {enemyDamage} damage!");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"\n{attackVerb} you for {enemyDamage} damage.");
+                        Sound.PlayEnemyAttack();
+                    }
+
+                    _player.TakeDamage(enemyDamage);
+                }
+                
                 Thread.Sleep(1000);
                 UI.DrawHealthBar(_player.Name, _player.Health, _player.MaxHealth);
                 Thread.Sleep(3000);
+
                 if (!_player.IsAlive)
                 {
                     Console.ForegroundColor = ConsoleColor.DarkRed;
-                    Console.WriteLine("\nYou have been defeated. GAME OVER.");
+                    Console.WriteLine("\nYour vision fades to black...");
+                    Console.WriteLine("The legend of the Ancient Amulet remains a mystery, and the town's hope fades with you.");
                     _isRunning = false;
                     Console.ResetColor();
+                    Console.WriteLine("\n--- GAME OVER ---");
                     Console.WriteLine("\nPress any key to exit.");
                     Console.ReadKey();
+                    return;
                 }
                 Console.ResetColor();
             }
@@ -186,6 +293,16 @@ namespace AdventureGame
                     _currentLocation.HasBeenVisited = true;
                     _currentLocation = exit.Destination;
                     _lastActionMessage = "";
+                    
+                    if (!_currentLocation.HasBeenVisited && !string.IsNullOrEmpty(_currentLocation.EntryMessage))
+                    {
+                        RedrawGameScreen();
+                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        Console.WriteLine($"\n{_currentLocation.EntryMessage}");
+                        Console.ResetColor();
+                        Thread.Sleep(5000);
+                    }
+                    
                     PerformTimedLoot();
                 }
             }
@@ -197,25 +314,29 @@ namespace AdventureGame
 
         private void PerformTimedLoot()
         {
-            if (_currentLocation.Items.Any())
+            if (_currentLocation.Items.Any(i => !i.IsSecret) && !_currentLocation.Characters.OfType<Enemy>().Any())
             {
                 RedrawGameScreen();
                 Thread.Sleep(5000);
                 
-                var itemsInLocation = new List<Item>(_currentLocation.Items);
+                var itemsInLocation = _currentLocation.Items.Where(i => !i.IsSecret).ToList();
                 var lootMessages = new StringBuilder();
                 foreach (var item in itemsInLocation)
                 {
+                    var oldBestWeapon = _player.Inventory.OfType<Weapon>().OrderByDescending(w => w.MaxDamage).FirstOrDefault();
                     _player.AddToInventory(item);
                     _currentLocation.Items.Remove(item);
                     lootMessages.AppendLine(item.DiscoveryMessage);
-
-                    if (item is Treasure)
+                    Sound.PlayItemGet();
+                    if (item is Weapon newWeapon)
                     {
-                        _lastActionMessage = lootMessages.ToString().TrimEnd();
-                        EndGame();
-                        return;
+                        if (oldBestWeapon != null)
+                        {
+                            if (newWeapon.MaxDamage > oldBestWeapon.MaxDamage) { lootMessages.AppendLine($"You equip the {newWeapon.Name}, discarding your old {oldBestWeapon.Name}. It's a clear upgrade!"); }
+                            else { lootMessages.AppendLine($"You stow the {newWeapon.Name}, as your currently equipped weapon is better."); }
+                        }
                     }
+                    if (item is Treasure) { _lastActionMessage = lootMessages.ToString().TrimEnd(); EndGame(); return; }
                 }
                 _lastActionMessage = lootMessages.ToString().TrimEnd();
             }
@@ -224,50 +345,63 @@ namespace AdventureGame
         private void Use(string itemName)
         {
             if (string.IsNullOrEmpty(itemName)) { _lastActionMessage = "Use what?"; return; }
-            var itemToUse = _player.Inventory.FirstOrDefault(i => i.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
-            if (itemToUse == null) { _lastActionMessage = $"You don't have a '{itemName}'."; return; }
-
-            if (itemToUse is Key key)
+            var itemToUse = _player.Inventory.FirstOrDefault(i => i.Keywords.Contains(itemName));
+            if (itemToUse != null)
             {
-                var lockedExit = _currentLocation.Exits.FirstOrDefault(e => e.Value.IsLocked && e.Value.RequiredKeyId == key.KeyId);
-
-                if (lockedExit.Value != null)
+                if (itemToUse is Key key)
                 {
-                    lockedExit.Value.IsLocked = false;
-                    _lastActionMessage = $"You use the {key.Name}. With a loud *CLICK*, the way {lockedExit.Key} is now unlocked!";
+                    var lockedExit = _currentLocation.Exits.FirstOrDefault(e => e.Value.IsLocked && e.Value.RequiredKeyId == key.KeyId);
+                    if (lockedExit.Value != null) { lockedExit.Value.IsLocked = false; _lastActionMessage = $"You use the {key.Name}. With a loud *CLICK*, the way {lockedExit.Key} is now unlocked!"; Sound.PlayUnlockDoor(); }
+                    else { _lastActionMessage = "That key doesn't seem to work on anything here."; }
+                    return;
                 }
-                else
-                {
-                    _lastActionMessage = "That key doesn't seem to work on anything here.";
-                }
-                return;
+                _lastActionMessage = itemToUse.Use(_player);
             }
+            else { _lastActionMessage = $"You don't have a '{itemName}' in your inventory."; }
+        }
 
-            if (itemToUse is Potion)
+        private void DrinkFromFountain()
+        {
+            if (_currentLocation.Name != "Town Square") { _lastActionMessage = "There is no fountain here."; return; }
+            if (_hasDrankFromFountain) { _lastActionMessage = "You drink from the fountain again, but nothing else happens."; return; }
+            _hasDrankFromFountain = true;
+            int healthRestored = _player.Heal(5);
+            var message = new StringBuilder($"The water is cool and refreshing. You restore {healthRestored} health.");
+            var luckyCoin = _currentLocation.Items.OfType<LuckyCoin>().FirstOrDefault();
+            if (luckyCoin != null)
             {
-                itemToUse.Use(_player);
-                _lastActionMessage = "You feel invigorated!";
+                _player.AddToInventory(luckyCoin);
+                _currentLocation.Items.Remove(luckyCoin);
+                message.AppendLine($"\n{luckyCoin.DiscoveryMessage}");
+                Sound.PlayItemGet();
             }
-            else
-            {
-                itemToUse.Use(_player);
-                _lastActionMessage = $"You use the {itemToUse.Name}.";
-            }
+            _lastActionMessage = message.ToString();
+        }
+
+        private void LookAt(string targetName)
+        {
+            if (string.IsNullOrEmpty(targetName)) { _lastActionMessage = "Look at what?"; return; }
+
+            var itemInInventory = _player.Inventory.FirstOrDefault(i => i.Keywords.Contains(targetName));
+            if (itemInInventory != null) { _lastActionMessage = itemInInventory.DetailedDescription; return; }
+
+            var itemInRoom = _currentLocation.Items.FirstOrDefault(i => i.Keywords.Contains(targetName));
+            if (itemInRoom != null) { _lastActionMessage = itemInRoom.DetailedDescription; return; }
+
+            var characterInRoom = _currentLocation.Characters.FirstOrDefault(c => c.Keywords.Contains(targetName));
+            if (characterInRoom != null) { _lastActionMessage = characterInRoom.DetailedDescription; return; }
+            
+            _lastActionMessage = $"You don't see any '{targetName}' here.";
         }
 
         private void DisplayPrompt()
         {
             var suggestions = new List<string>();
-            if (_currentLocation.Exits.Any())
-            {
-                foreach (var exitKey in _currentLocation.Exits.Keys)
-                {
-                    suggestions.Add($"go {exitKey}");
-                }
-            }
+            if (_currentLocation.Exits.Any()) { foreach (var exitKey in _currentLocation.Exits.Keys) { suggestions.Add($"go {exitKey}"); } }
             var firstEnemy = _currentLocation.Characters.OfType<Enemy>().FirstOrDefault();
             if (firstEnemy != null) { suggestions.Add($"attack {firstEnemy.Name.ToLower()}"); }
             else if (_currentLocation.Characters.Any(c => c is not Player)) { suggestions.Add($"talk to {_currentLocation.Characters.First(c => c is not Player).Name.ToLower()}"); }
+            if (_currentLocation.Name == "Town Square" && !_hasDrankFromFountain) { suggestions.Add("drink fountain"); }
             suggestions.Add("help");
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.Write($"\n(Try: {string.Join(", ", suggestions)})");
@@ -279,6 +413,7 @@ namespace AdventureGame
         {
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
+            Sound.PlayCriticalHit();
             Console.WriteLine(@"
     >>-CRITICAL HIT!->>
             ");
@@ -289,13 +424,9 @@ namespace AdventureGame
         private void Talk(string characterName)
         {
             if (string.IsNullOrEmpty(characterName)) { _lastActionMessage = "Talk to whom?"; return; }
-            var character = _currentLocation.Characters.FirstOrDefault(c => c.Name.Equals(characterName, StringComparison.OrdinalIgnoreCase) && c != _player);
-            if (character != null)
-            {
-                _lastActionMessage = $"You talk to {character.Name}. They say: \"{character.GetDescription()}\"";
-                if (character is Enemy) _lastActionMessage += "\nIt growls at you menacingly.";
-            }
-            else { _lastActionMessage = $"There is no one named '{characterName}' here."; }
+            var characterToTalkTo = _currentLocation.Characters.Where(c => c != _player).FirstOrDefault(c => c.Keywords.Contains(characterName));
+            if (characterToTalkTo != null) { _lastActionMessage = $"You talk to {characterToTalkTo.Name}. They say: \"{characterToTalkTo.GetDescription()}\""; }
+            else { _lastActionMessage = $"You don't see anyone named '{characterName}' here."; }
         }
 
         private void ShowInventory()
@@ -303,18 +434,17 @@ namespace AdventureGame
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("\n--- Inventory ---");
-            UI.DrawHealthBar("Your Health", _player.Health, _player.MaxHealth);
+            UI.DrawHealthBar(_player.Name, _player.Health, _player.MaxHealth);
+            var bestWeapon = _player.Inventory.OfType<Weapon>().OrderByDescending(w => w.MaxDamage).FirstOrDefault();
             if (_player.Inventory.Any())
             {
                 foreach (var item in _player.Inventory)
                 {
-                    Console.WriteLine($"- {item.Name}: {item.Description}");
+                    string equippedText = (item == bestWeapon) ? " (Equipped)" : "";
+                    Console.WriteLine($"- {item.Name}{equippedText}: {item.Description}");
                 }
             }
-            else
-            {
-                Console.WriteLine("Your inventory is empty.");
-            }
+            else { Console.WriteLine("Your inventory is empty."); }
             Console.ResetColor();
             Console.WriteLine("\nPress any key to return to the game.");
             Console.ReadKey();
@@ -324,14 +454,15 @@ namespace AdventureGame
         {
             Console.Clear();
             Console.WriteLine("\n--- Available Commands ---");
-            Console.WriteLine("go [direction]    - Move to a new location (e.g., 'go north')");
-            Console.WriteLine("look              - Redraws the screen, showing the current location.");
-            Console.WriteLine("use [item]        - Use an item from your inventory");
-            Console.WriteLine("talk to [char]    - Talk to a character (e.g., 'talk to goblin')");
-            Console.WriteLine("attack [char]     - Attack a character (e.g., 'attack goblin')");
-            Console.WriteLine("inventory (or i)  - Show your inventory and status");
-            Console.WriteLine("help              - Show this help message");
-            Console.WriteLine("quit              - Exit the game");
+            Console.WriteLine("go / move [direction]    - Move to a new location (e.g., 'go north')");
+            Console.WriteLine("look / examine           - Redraws the screen, showing the current location.");
+            Console.WriteLine("look at [target]         - Get a detailed description of an item or character.");
+            Console.WriteLine("use [item]               - Use an item from your inventory");
+            Console.WriteLine("talk to [char]           - Talk to a character (e.g., 'talk to goblin')");
+            Console.WriteLine("attack / fight [char]    - Attack a character (e.g., 'attack goblin')");
+            Console.WriteLine("inventory / i            - Show your inventory and status");
+            Console.WriteLine("help                     - Show this help message");
+            Console.WriteLine("quit / exit              - Exit the game");
             Console.WriteLine("\nPress any key to return to the game.");
             Console.ReadKey();
         }
@@ -354,9 +485,17 @@ namespace AdventureGame
         private void Attack(string enemyName)
         {
             if (string.IsNullOrEmpty(enemyName)) { _lastActionMessage = "Attack whom?"; return; }
-            var enemy = _currentLocation.Characters.OfType<Enemy>().FirstOrDefault(e => e.Name.Equals(enemyName, StringComparison.OrdinalIgnoreCase));
-            if (enemy != null) { StartCombat(enemy); }
-            else { _lastActionMessage = $"There is no one named '{enemyName}' to attack here."; }
+            var enemyToAttack = _currentLocation.Characters.OfType<Enemy>().FirstOrDefault(e => e.Keywords.Contains(enemyName));
+            if (enemyToAttack != null)
+            {
+                if (enemyToAttack.Name == "Large Red Dragon" && _player.Health < 50 && _player.Inventory.OfType<Potion>().Any())
+                {
+                    _lastActionMessage = "The dragon looks incredibly powerful. This might be a good time to use a health potion before attacking.";
+                    return;
+                }
+                StartCombat(enemyToAttack);
+            }
+            else { _lastActionMessage = $"You don't see anyone named '{enemyName}' here to attack."; }
         }
     }
 }

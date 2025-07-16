@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AdventureGame.Character;
 
 namespace AdventureGame.Items
@@ -6,15 +7,16 @@ namespace AdventureGame.Items
     {
         public int KeyId { get; private set; }
 
-        public Key(string name, string description, string discoveryMessage, int keyId) 
-            : base(name, description, discoveryMessage)
+        public Key(string name, string description, string detailedDescription, string discoveryMessage, int keyId, List<string> keywords) 
+            : base(name, description, detailedDescription, discoveryMessage)
         {
             KeyId = keyId;
+            Keywords.AddRange(keywords);
         }
 
-        public override void Use(Player player)
+        public override string Use(Player player)
         {
-            System.Console.WriteLine($"You hold up the {Name}. It might be useful for a lock.");
+            return "This key might be useful for a lock.";
         }
     }
 }

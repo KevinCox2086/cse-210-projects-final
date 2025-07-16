@@ -10,7 +10,9 @@ namespace AdventureGame.Character
         private readonly List<Item> _inventory = new List<Item>();
         public IReadOnlyList<Item> Inventory => _inventory;
 
-        public Player(string name, int maxHealth) : base(name, maxHealth) { }
+        public Player(string name, int maxHealth) 
+            : base(name, $"It's you, {name}, a brave adventurer.", maxHealth) 
+        { }
 
         public override int CalculateDamage(out bool isCritical)
         {
@@ -28,7 +30,14 @@ namespace AdventureGame.Character
                 maxDamage = 4;
             }
             int damage = _random.Next(minDamage, maxDamage + 1);
-            if (_random.Next(1, 101) <= 10)
+
+            int critChance = 10;
+            if (Inventory.OfType<LuckyCoin>().Any())
+            {
+                critChance = 25;
+            }
+
+            if (_random.Next(1, 101) <= critChance)
             {
                 isCritical = true;
                 return damage * 2;
@@ -47,10 +56,15 @@ namespace AdventureGame.Character
             _inventory.Remove(item);
         }
 
-        public void Heal(int amount)
+        public int Heal(int amount)
         {
+            int healthBefore = Health;
             Health += amount;
-            if (Health > MaxHealth) Health = MaxHealth;
+            if (Health > MaxHealth)
+            {
+                Health = MaxHealth;
+            }
+            return Health - healthBefore;
         }
 
         public override string GetDescription()
